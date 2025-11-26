@@ -12,14 +12,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { saveMeal } from '@/lib/database';
 
 interface AddFoodDialogProps {
   open: boolean;
   onClose: () => void;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  userId: string;
+  onMealAdded: () => void;
 }
 
-export default function AddFoodDialog({ open, onClose, mealType }: AddFoodDialogProps) {
+export default function AddFoodDialog({ open, onClose, mealType, userId, onMealAdded }: AddFoodDialogProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [foodName, setFoodName] = useState('');
   const [portion, setPortion] = useState('');
@@ -27,8 +30,9 @@ export default function AddFoodDialog({ open, onClose, mealType }: AddFoodDialog
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!foodName || !calories) {
@@ -36,16 +40,35 @@ export default function AddFoodDialog({ open, onClose, mealType }: AddFoodDialog
       return;
     }
 
-    toast.success('Alimento adicionado com sucesso!');
-    onClose();
-    
-    // Reset form
-    setFoodName('');
-    setPortion('');
-    setCalories('');
-    setProtein('');
-    setCarbs('');
-    setFat('');
+    setLoading(true);
+
+    try {
+      await saveMeal(userId, {
+        date: new Date().toISOString().split('T')[0],
+        meal_type: mealType,
+        food_name: foodName,
+        calories: parseFloat(calories) || 0,
+        protein: parseFloat(protein) || 0,
+        carbs: parseFloat(carbs) || 0,
+        fats: parseFloat(fat) || 0,
+      });
+
+      toast.success('Alimento adicionado com sucesso!');
+      onMealAdded();
+      onClose();
+      
+      // Reset form
+      setFoodName('');
+      setPortion('');
+      setCalories('');
+      setProtein('');
+      setCarbs('');
+      setFat('');
+    } catch (error: any) {
+      toast.error('Erro ao adicionar alimento: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -143,15 +166,17 @@ export default function AddFoodDialog({ open, onClose, mealType }: AddFoodDialog
                 variant="outline"
                 onClick={onClose}
                 className="flex-1"
+                disabled={loading}
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 className="flex-1 bg-[#3ED1A1] hover:bg-[#3ED1A1]/90 text-white"
+                disabled={loading}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Adicionar
+                {loading ? 'Adicionando...' : 'Adicionar'}
               </Button>
             </div>
           </form>

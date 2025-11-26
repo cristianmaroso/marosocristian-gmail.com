@@ -3,6 +3,14 @@
 import { CALORIE_MULTIPLIERS, GOAL_ADJUSTMENTS } from './constants';
 import type { User, DailyStats, FoodEntry } from './types';
 
+// Função helper para garantir que valores numéricos sejam válidos
+function safeNumber(value: number | undefined | null, fallback: number = 0): number {
+  if (value === undefined || value === null || isNaN(value) || !isFinite(value)) {
+    return fallback;
+  }
+  return value;
+}
+
 // Calcular TMB (Taxa Metabólica Basal) usando fórmula de Mifflin-St Jeor
 export function calculateBMR(user: User): number {
   const { weight, height, age, gender } = user;
@@ -42,10 +50,10 @@ export function calculateWeightProgress(user: User): {
   const percentage = totalToLose > 0 ? (lost / totalToLose) * 100 : 0;
 
   return {
-    current: currentWeight,
-    target: targetWeight,
-    remaining,
-    percentage: Math.min(percentage, 100),
+    current: safeNumber(currentWeight),
+    target: safeNumber(targetWeight),
+    remaining: safeNumber(remaining),
+    percentage: safeNumber(Math.min(percentage, 100)),
   };
 }
 
@@ -55,8 +63,8 @@ export function analyzeCalorieBalance(stats: DailyStats, goal: number): {
   status: 'deficit' | 'surplus' | 'balanced';
   message: string;
 } {
-  const netCalories = stats.caloriesConsumed - stats.caloriesBurned;
-  const balance = netCalories - goal;
+  const netCalories = safeNumber(stats.caloriesConsumed) - safeNumber(stats.caloriesBurned);
+  const balance = netCalories - safeNumber(goal);
 
   let status: 'deficit' | 'surplus' | 'balanced';
   let message: string;
@@ -87,9 +95,9 @@ export function analyzeMacros(entries: FoodEntry[]): {
 } {
   const totals = entries.reduce(
     (acc, entry) => ({
-      protein: acc.protein + entry.protein,
-      carbs: acc.carbs + entry.carbs,
-      fat: acc.fat + entry.fat,
+      protein: acc.protein + safeNumber(entry.protein),
+      carbs: acc.carbs + safeNumber(entry.carbs),
+      fat: acc.fat + safeNumber(entry.fat),
     }),
     { protein: 0, carbs: 0, fat: 0 }
   );
@@ -114,9 +122,9 @@ export function analyzeMacros(entries: FoodEntry[]): {
 
   return {
     ...totals,
-    proteinPercentage,
-    carbsPercentage,
-    fatPercentage,
+    proteinPercentage: safeNumber(proteinPercentage),
+    carbsPercentage: safeNumber(carbsPercentage),
+    fatPercentage: safeNumber(fatPercentage),
     recommendations,
   };
 }
@@ -128,26 +136,30 @@ export function generateCoachingMessage(stats: DailyStats, user: User): string {
   
   const messages: string[] = [];
 
+  const caloriesConsumed = safeNumber(stats.caloriesConsumed);
+  const waterIntake = safeNumber(stats.waterIntake);
+  const activityMinutes = safeNumber(stats.activityMinutes);
+
   // Análise de calorias
-  if (stats.caloriesConsumed < calorieGoal * 0.7) {
+  if (caloriesConsumed < calorieGoal * 0.7) {
     messages.push('Você está comendo muito pouco! Isso pode desacelerar seu metabolismo.');
-  } else if (stats.caloriesConsumed > calorieGoal * 1.2) {
+  } else if (caloriesConsumed > calorieGoal * 1.2) {
     messages.push('Cuidado! Você ultrapassou sua meta calórica em mais de 20%.');
   } else {
     messages.push('Ótimo trabalho mantendo suas calorias dentro da meta!');
   }
 
   // Análise de hidratação
-  if (stats.waterIntake < waterGoal * 0.5) {
+  if (waterIntake < waterGoal * 0.5) {
     messages.push('⚠️ Sua hidratação está muito baixa! Beba mais água.');
-  } else if (stats.waterIntake >= waterGoal) {
+  } else if (waterIntake >= waterGoal) {
     messages.push('💧 Excelente hidratação hoje!');
   }
 
   // Análise de atividade física
-  if (stats.activityMinutes === 0) {
+  if (activityMinutes === 0) {
     messages.push('Que tal fazer uma caminhada de 15 minutos hoje?');
-  } else if (stats.activityMinutes >= 30) {
+  } else if (activityMinutes >= 30) {
     messages.push('🏃 Parabéns pelos exercícios! Continue assim!');
   }
 
@@ -168,8 +180,12 @@ export function detectDeficientAreas(stats: DailyStats, user: User): {
     message: string;
   }[] = [];
 
+  const waterIntake = safeNumber(stats.waterIntake);
+  const caloriesConsumed = safeNumber(stats.caloriesConsumed);
+  const activityMinutes = safeNumber(stats.activityMinutes);
+
   // Verificar hidratação
-  const waterPercentage = (stats.waterIntake / waterGoal) * 100;
+  const waterPercentage = (waterIntake / waterGoal) * 100;
   if (waterPercentage < 30) {
     deficiencies.push({
       area: 'hydration',
@@ -185,7 +201,7 @@ export function detectDeficientAreas(stats: DailyStats, user: User): {
   }
 
   // Verificar calorias
-  const caloriePercentage = (stats.caloriesConsumed / calorieGoal) * 100;
+  const caloriePercentage = (caloriesConsumed / calorieGoal) * 100;
   if (caloriePercentage < 50 && new Date().getHours() > 18) {
     deficiencies.push({
       area: 'calories',
@@ -195,7 +211,7 @@ export function detectDeficientAreas(stats: DailyStats, user: User): {
   }
 
   // Verificar atividade física
-  if (stats.activityMinutes === 0 && new Date().getHours() > 16) {
+  if (activityMinutes === 0 && new Date().getHours() > 16) {
     deficiencies.push({
       area: 'activity',
       priority: 'medium',

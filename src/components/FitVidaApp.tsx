@@ -1,16 +1,62 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Home, BookOpen, Activity, User } from 'lucide-react';
 import DashboardTab from './tabs/DashboardTab';
 import DiaryTab from './tabs/DiaryTab';
 import ActivitiesTab from './tabs/ActivitiesTab';
 import ProfileTab from './tabs/ProfileTab';
+import AuthPage from './AuthPage';
+import { getCurrentUser } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
 type Tab = 'home' | 'diary' | 'activities' | 'profile';
 
 export default function FitVidaApp() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Verificar sessão atual
+    checkUser();
+
+    // Escutar mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+    } catch (error) {
+      console.error('Erro ao verificar usuário:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage onAuthSuccess={checkUser} />;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#F7FAFC]">
@@ -24,10 +70,10 @@ export default function FitVidaApp() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto pb-20">
-        {activeTab === 'home' && <DashboardTab />}
-        {activeTab === 'diary' && <DiaryTab />}
-        {activeTab === 'activities' && <ActivitiesTab />}
-        {activeTab === 'profile' && <ProfileTab />}
+        {activeTab === 'home' && <DashboardTab userId={user.id} />}
+        {activeTab === 'diary' && <DiaryTab userId={user.id} />}
+        {activeTab === 'activities' && <ActivitiesTab userId={user.id} />}
+        {activeTab === 'profile' && <ProfileTab userId={user.id} userEmail={user.email} />}
       </main>
 
       {/* Bottom Navigation */}

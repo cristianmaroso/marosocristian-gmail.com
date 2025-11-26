@@ -7,31 +7,48 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import type { WaterEntry } from '@/lib/types';
 import { toast } from 'sonner';
+import { updateWaterIntake } from '@/lib/database';
 
 interface WaterTrackerProps {
   entries: WaterEntry[];
+  userId: string;
+  onWaterUpdate: () => void;
 }
 
-export default function WaterTracker({ entries }: WaterTrackerProps) {
+export default function WaterTracker({ entries, userId, onWaterUpdate }: WaterTrackerProps) {
   const [localEntries, setLocalEntries] = useState(entries);
+  const [loading, setLoading] = useState(false);
   
-  const totalWater = localEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const totalWater = localEntries.reduce((sum, entry) => sum + (entry.amount || 0), 0);
   const waterGoal = 2500; // ml
   const percentage = Math.min((totalWater / waterGoal) * 100, 100);
 
   const quickAmounts = [200, 300, 500, 750];
 
-  const addWater = (amount: number) => {
-    const newEntry: WaterEntry = {
-      id: `water-${Date.now()}`,
-      userId: 'user-1',
-      date: new Date(),
-      amount,
-      time: new Date(),
-    };
-    
-    setLocalEntries([...localEntries, newEntry]);
-    toast.success(`${amount}ml de água registrados!`);
+  const addWater = async (amount: number) => {
+    setLoading(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const newTotal = totalWater + amount;
+      
+      await updateWaterIntake(userId, today, newTotal);
+      
+      const newEntry: WaterEntry = {
+        id: `water-${Date.now()}`,
+        userId,
+        date: new Date(),
+        amount,
+        time: new Date(),
+      };
+      
+      setLocalEntries([...localEntries, newEntry]);
+      toast.success(`${amount}ml de água registrados!`);
+      onWaterUpdate();
+    } catch (error: any) {
+      toast.error('Erro ao registrar água: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -54,14 +71,14 @@ export default function WaterTracker({ entries }: WaterTrackerProps) {
         <CardContent className="space-y-4">
           <div className="text-center">
             <p className="text-5xl font-bold text-[#2D3748] mb-2">
-              {(totalWater / 1000).toFixed(1)}L
+              {((totalWater || 0) / 1000).toFixed(1)}L
             </p>
             <p className="text-[#4A5568]">
-              de {(waterGoal / 1000).toFixed(1)}L
+              de {((waterGoal || 0) / 1000).toFixed(1)}L
             </p>
           </div>
 
-          <Progress value={percentage} className="h-4" />
+          <Progress value={percentage || 0} className="h-4" />
 
           <div className="text-center text-sm text-[#4A5568]">
             {percentage >= 100 ? (
@@ -70,7 +87,7 @@ export default function WaterTracker({ entries }: WaterTrackerProps) {
               </span>
             ) : (
               <span>
-                Faltam {((waterGoal - totalWater) / 1000).toFixed(1)}L para sua meta
+                Faltam {(((waterGoal || 0) - (totalWater || 0)) / 1000).toFixed(1)}L para sua meta
               </span>
             )}
           </div>
@@ -92,6 +109,7 @@ export default function WaterTracker({ entries }: WaterTrackerProps) {
                 onClick={() => addWater(amount)}
                 variant="outline"
                 className="h-20 flex flex-col items-center justify-center border-[#3ED1A1] text-[#005A70] hover:bg-[#3ED1A1]/10"
+                disabled={loading}
               >
                 <Droplet className="w-6 h-6 mb-1" />
                 <span className="font-semibold">{amount}ml</span>
@@ -129,7 +147,7 @@ export default function WaterTracker({ entries }: WaterTrackerProps) {
                       </div>
                       <div>
                         <p className="font-medium text-[#2D3748]">
-                          {entry.amount}ml
+                          {entry.amount || 0}ml
                         </p>
                         <p className="text-sm text-[#4A5568]">
                           {formatTime(entry.time)}

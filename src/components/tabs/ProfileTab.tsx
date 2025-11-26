@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   User, 
   Crown, 
@@ -21,13 +21,69 @@ import { calculateWeightProgress } from '@/lib/utils-fitvida';
 import { PREMIUM_FEATURES } from '@/lib/constants';
 import PremiumDialog from '../dialogs/PremiumDialog';
 import CommunitySection from '../widgets/CommunitySection';
+import { signOut } from '@/lib/auth';
+import { toast } from 'sonner';
+import { getUserProfile, getUserGoals, UserProfile, UserGoals } from '@/lib/database';
 
-export default function ProfileTab() {
+interface ProfileTabProps {
+  userId: string;
+  userEmail: string;
+}
+
+export default function ProfileTab({ userId, userEmail }: ProfileTabProps) {
   const [showPremiumDialog, setShowPremiumDialog] = useState(false);
-  const weightProgress = calculateWeightProgress(mockUser);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [goals, setGoals] = useState<UserGoals | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadUserData();
+  }, [userId]);
+
+  const loadUserData = async () => {
+    try {
+      const [profileData, goalsData] = await Promise.all([
+        getUserProfile(userId),
+        getUserGoals(userId)
+      ]);
+      setProfile(profileData);
+      setGoals(goalsData);
+    } catch (error) {
+      console.error('Erro ao carregar dados do usuário:', error);
+      toast.error('Erro ao carregar dados do perfil');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const weightProgress = goals ? calculateWeightProgress({
+    currentWeight: goals.weight,
+    targetWeight: goals.target_weight,
+    startWeight: goals.weight // Assuming start weight is current for now
+  }) : { current: 0, target: 0, remaining: 0, percentage: 0 };
 
   const unlockedAchievements = userAchievements.filter(a => a.unlockedAt);
   const inProgressAchievements = userAchievements.filter(a => !a.unlockedAt);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success('Logout realizado com sucesso!');
+    } catch (error: any) {
+      toast.error('Erro ao fazer logout');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <p className="text-gray-600">Carregando perfil...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6">
@@ -36,12 +92,12 @@ export default function ProfileTab() {
         <CardContent className="pt-6">
           <div className="flex items-center gap-4 mb-4">
             <div className="w-20 h-20 bg-gradient-to-br from-[#005A70] to-[#3ED1A1] rounded-full flex items-center justify-center text-white text-2xl font-bold">
-              {mockUser.name.charAt(0)}
+              {profile?.name ? profile.name.charAt(0).toUpperCase() : userEmail.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-xl font-bold text-[#2D3748]">
-                  {mockUser.name}
+                  {profile?.name || 'Usuário'}
                 </h2>
                 {mockUser.isPremium && (
                   <Badge className="bg-gradient-to-r from-[#005A70] to-[#3ED1A1] text-white">
@@ -50,7 +106,7 @@ export default function ProfileTab() {
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-[#4A5568]">{mockUser.email}</p>
+              <p className="text-sm text-[#4A5568]">{userEmail}</p>
             </div>
           </div>
 
@@ -58,13 +114,13 @@ export default function ProfileTab() {
           <div className="grid grid-cols-3 gap-4 pt-4 border-t">
             <div className="text-center">
               <p className="text-2xl font-bold text-[#005A70]">
-                {weightProgress.current}kg
+                {goals?.weight || 0}kg
               </p>
               <p className="text-xs text-[#4A5568]">Peso Atual</p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-[#3ED1A1]">
-                {weightProgress.target}kg
+                {goals?.target_weight || 0}kg
               </p>
               <p className="text-xs text-[#4A5568]">Meta</p>
             </div>
@@ -218,7 +274,10 @@ export default function ProfileTab() {
                 <ChevronRight className="w-5 h-5 text-[#4A5568]" />
               </button>
               <div className="border-t" />
-              <button className="w-full flex items-center justify-between p-4 hover:bg-[#F7FAFC] transition-colors text-red-600">
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center justify-between p-4 hover:bg-red-50 transition-colors text-red-600"
+              >
                 <div className="flex items-center gap-3">
                   <LogOut className="w-5 h-5" />
                   <span>Sair</span>

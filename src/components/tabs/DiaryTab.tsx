@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Camera, Search, Utensils, Coffee, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,32 +10,75 @@ import { MEAL_TYPES } from '@/lib/constants';
 import AddFoodDialog from '../dialogs/AddFoodDialog';
 import FoodPhotoDialog from '../dialogs/FoodPhotoDialog';
 import WaterTracker from '../widgets/WaterTracker';
+import { getMeals, getDailyLog, Meal, DailyLog } from '@/lib/database';
 
-export default function DiaryTab() {
+interface DiaryTabProps {
+  userId: string;
+}
+
+export default function DiaryTab({ userId }: DiaryTabProps) {
   const [showAddFood, setShowAddFood] = useState(false);
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [selectedMeal, setSelectedMeal] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('breakfast');
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [todayLog, setTodayLog] = useState<DailyLog | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDiaryData();
+  }, [userId]);
+
+  const loadDiaryData = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const [mealsData, logData] = await Promise.all([
+        getMeals(userId, today),
+        getDailyLog(userId, today)
+      ]);
+      setMeals(mealsData);
+      setTodayLog(logData);
+    } catch (error) {
+      console.error('Erro ao carregar dados do diário:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Função helper para garantir que valores numéricos sejam válidos
+  const safeNumber = (value: number | undefined, fallback: number = 0): number => {
+    if (value === undefined || value === null || isNaN(value) || !isFinite(value)) {
+      return fallback;
+    }
+    return value;
+  };
 
   const getMealIcon = (mealType: string) => {
     switch (mealType) {
-      case 'breakfast':
-        return <Coffee className="w-5 h-5" />;
-      case 'lunch':
-        return <Sun className="w-5 h-5" />;
-      case 'dinner':
-        return <Moon className="w-5 h-5" />;
-      default:
-        return <Utensils className="w-5 h-5" />;
+      case 'breakfast': return <Coffee className="w-5 h-5" />;
+      case 'lunch': return <Sun className="w-5 h-5" />;
+      case 'dinner': return <Moon className="w-5 h-5" />;
+      default: return <Utensils className="w-5 h-5" />;
     }
   };
 
   const getMealEntries = (mealType: string) => {
-    return todayFoodEntries.filter(entry => entry.mealType === mealType);
+    return meals.filter(meal => meal.meal_type === mealType);
   };
 
   const getMealCalories = (mealType: string) => {
-    return getMealEntries(mealType).reduce((sum, entry) => sum + entry.calories, 0);
+    return getMealEntries(mealType).reduce((sum, entry) => sum + safeNumber(entry.calories), 0);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <p className="text-gray-600">Carregando diário...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6">
@@ -82,7 +125,7 @@ export default function DiaryTab() {
                     <div className="text-right">
                       <p className="text-sm text-[#4A5568]">Total</p>
                       <p className="text-lg font-bold text-[#2D3748]">
-                        {totalCalories} kcal
+                        {safeNumber(totalCalories)} kcal
                       </p>
                     </div>
                   </div>
@@ -107,25 +150,25 @@ export default function DiaryTab() {
                     <>
                       {entries.map((entry) => (
                         <div
-                          key={entry.id}
+                          key={entry.id || `${entry.date}-${entry.meal_type}-${entry.food_name}`}
                           className="flex items-center justify-between p-3 bg-[#F7FAFC] rounded-lg hover:bg-[#E2E8F0] transition-colors"
                         >
                           <div className="flex-1">
                             <p className="font-medium text-[#2D3748]">
-                              {entry.foodName}
+                              {entry.food_name}
                             </p>
                             <p className="text-sm text-[#4A5568]">
-                              {entry.portion}
+                              Porção não especificada
                             </p>
                             <div className="flex gap-3 mt-1 text-xs text-[#4A5568]">
-                              <span>P: {entry.protein}g</span>
-                              <span>C: {entry.carbs}g</span>
-                              <span>G: {entry.fat}g</span>
+                              <span>P: {safeNumber(entry.protein)}g</span>
+                              <span>C: {safeNumber(entry.carbs)}g</span>
+                              <span>G: {safeNumber(entry.fat)}g</span>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-bold text-[#005A70]">
-                              {entry.calories}
+                              {safeNumber(entry.calories)}
                             </p>
                             <p className="text-xs text-[#4A5568]">kcal</p>
                           </div>
@@ -167,7 +210,11 @@ export default function DiaryTab() {
 
         {/* Tab de Hidratação */}
         <TabsContent value="water" className="mt-4">
-          <WaterTracker entries={todayWaterEntries} />
+          <WaterTracker 
+            entries={todayLog ? [{ amount: todayLog.water_intake, time: 'Hoje' }] : []} 
+            userId={userId}
+            onWaterUpdate={loadDiaryData}
+          />
         </TabsContent>
       </Tabs>
 
@@ -176,6 +223,8 @@ export default function DiaryTab() {
         open={showAddFood}
         onClose={() => setShowAddFood(false)}
         mealType={selectedMeal}
+        userId={userId}
+        onMealAdded={loadDiaryData}
       />
       <FoodPhotoDialog
         open={showPhotoCapture}
